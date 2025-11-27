@@ -1,0 +1,98 @@
+# Automated Flask Deployment with Full-Stack Monitoring
+
+A complete CI/CD pipeline deploying a containerized Flask application with integrated monitoring (Prometheus, Grafana, Node Exporter) to AWS EC2 using Terraform and GitHub Actions.
+
+## 🏗️ Architecture
+
+```
+GitHub Repo → GitHub Actions → AWS EC2 (Docker Containers)
+                                    ├── Flask App
+                                    ├── Prometheus
+                                    ├── Grafana
+                                    └── Node Exporter
+```
+
+All services run as Docker containers, orchestrated via Docker Compose, deployed automatically on push to main.
+
+## 🚀 Technologies
+
+**Infrastructure**: Terraform, AWS EC2  
+**Containers**: Docker, Docker Compose  
+**CI/CD**: GitHub Actions  
+**App**: Python Flask, Gunicorn  
+**Monitoring**: Prometheus, Grafana, Node Exporter
+
+## 📝 Quick Start
+
+### 1. Provision Infrastructure
+```bash
+cd terraform
+terraform init
+terraform apply  # Wait ~3 minutes for setup
+```
+
+### 2. Configure GitHub Secrets
+Add to your repo (Settings → Secrets → Actions):
+- `EC2_SSH_KEY` - Your .pem file content
+- `EC2_HOST` - EC2 IP from Terraform output
+
+### 3. Deploy
+```bash
+git push origin main  # Triggers automatic deployment
+```
+
+### 4. Access Services
+- **Flask App**: `http://YOUR_IP:5000`
+- **Grafana**: `http://YOUR_IP:3000` (admin/admin)
+- **Prometheus**: `http://YOUR_IP:9090`
+
+## 📊 Setup Monitoring
+
+### Import Node Exporter Dashboard
+1. Open Grafana → Import → Dashboard ID: **1860**
+2. Select Prometheus as data source
+3. Instant system metrics (CPU, memory, disk, network)
+
+### Create Flask Dashboard
+Add panels with these queries:
+- **Request Rate**: `rate(flask_http_request_total[5m])`
+- **Response Time**: `rate(flask_http_request_duration_seconds_sum[5m]) / rate(flask_http_request_duration_seconds_count[5m])`
+- **Total Requests**: `sum(flask_http_request_total)`
+
+## 🎯 Key Advantages
+
+- **Fully Automated**: Infrastructure, deployment, and monitoring all from code - zero manual setup
+- **Fast Iterations**: Push to deploy in ~2 minutes with automated health checks
+- **Production Patterns**: Container isolation, metrics collection, and observability built-in
+- **Easy Rollback**: Git revert + push to instantly roll back changes
+- **Scalable**: Add services (databases, caching, load balancers) by editing docker-compose
+- **Industry Tools**: Demonstrates real-world DevOps with Terraform, Docker, CI/CD, and monitoring
+- **Environment Parity**: Same setup works for dev/staging/production
+- **Cost Efficient**: Single EC2 instance runs all services; easy to destroy when not needed
+
+## 🔄 Making Updates
+
+```bash
+# Edit code, commit, and push
+git add .
+git commit -m "Updated feature"
+git push origin main  # Auto-deploys with zero downtime
+```
+
+## 🧹 Cleanup
+
+```bash
+cd terraform
+terraform destroy  # Removes all AWS resources
+```
+
+## 🐛 Troubleshooting
+
+**Check deployment**: GitHub Actions → View logs  
+**Check containers**: `ssh ubuntu@YOUR_IP` → `docker ps`  
+**View logs**: `docker logs <container-name>`  
+**Prometheus targets**: `http://YOUR_IP:9090/targets` (all should be UP)
+
+---
+
+**Built with**: Terraform | Docker | GitHub Actions | Flask | Prometheus | Grafana | AWS
