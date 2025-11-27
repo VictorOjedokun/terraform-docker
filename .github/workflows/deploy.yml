@@ -1,0 +1,118 @@
+name: Deploy Full Stack (Docker)
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Deployment environment'
+        required: true
+        default: 'dev'
+        type: choice
+        options:
+          - prod
+          - dev
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Verify files exist
+        run: |
+          echo "Checking files..."
+          ls -lh app.py requirements.txt Dockerfile docker-compose.yml prometheus.yml grafana-datasource.yml
+
+      - name: Deploy to EC2
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.EC2_SSH_KEY }}
+          HOST: ${{ secrets.EC2_HOST }}
+        run: |
+          # Setup SSH
+          mkdir -p ~/.ssh
+          echo "$SSH_PRIVATE_KEY" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -H $HOST >> ~/.ssh/known_hosts
+          
+          # Copy all files to EC2
+          echo "Copying files to EC2..."
+          ssh -i ~/.ssh/id_rsa ubuntu@$HOST "mkdir -p /opt/app"
+          scp -i ~/.ssh/id_rsa app.py requirements.txt Dockerfile docker-compose.yml prometheus.yml grafana-datasource.yml ubuntu@$HOST:/opt/app/
+          
+          # Deploy entire stack with Docker
+          ssh -i ~/.ssh/id_rsa ubuntu@$HOST << 'ENDSSH'
+            set -e
+            
+            cd /opt/app
+            
+            # Stop and remove all containers
+            echo "Stopping existing containers..."
+            docker compose down 2>/dev/null || true
+            
+            # Build Flask app image
+            echo "Building Flask app..."
+            docker compose build flask-app
+            
+            # Start all containers (Flask, Prometheus, Grafana, Node Exporter)
+            echo "Starting all containers..."
+            docker compose up -d
+            
+            # Wait for containers to be ready
+            sleep 10
+            
+            # Check all containers are running
+            echo "Checking container status..."
+            docker ps
+            
+            # Show logs
+            echo "Flask app logs:"
+            docker logs flask-app --tail 10
+            
+            echo "Prometheus logs:"
+            docker logs prometheus --tail 5
+            
+            echo "Grafana logs:"
+            docker logs grafana --tail 5
+          ENDSSH
+
+      - name: Health Checks
+        env:
+          HOST: ${{ secrets.EC2_HOST }}
+        run: |
+          echo "Waiting for services to start..."
+          sleep 15
+          
+          # Test Flask app
+          echo "Testing Flask app..."
+          if curl -f http://$HOST:5000/health; then
+            echo "✅ Flask app is running"
+          else
+            echo "❌ Flask app failed"
+            exit 1
+          fi
+          
+          # Test Prometheus
+          echo "Testing Prometheus..."
+          if curl -f http://$HOST:9090/-/healthy; then
+            echo "✅ Prometheus is running"
+          else
+            echo "❌ Prometheus failed"
+            exit 1
+          fi
+          
+          # Test Grafana
+          echo "Testing Grafana..."
+          if curl -f http://$HOST:3000/api/health; then
+            echo "✅ Grafana is running"
+          else
+            echo "❌ Grafana failed"
+            exit 1
+          fi
+          
+          echo ""
+          echo "🎉 Deployment successful!"
+          echo "🌐 Flask App:  http://$HOST:5000"
+          echo "📊 Grafana:    http://$HOST:3000 (admin/admin)"
+          echo "📈 Prometheus: http://$HOST:9090"
